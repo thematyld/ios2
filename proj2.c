@@ -11,7 +11,9 @@
 
 
 #define COUNT_PARAM 5
+
 #define SHM_NAME "/xbarto96_shm_name"
+
 #define BUS_NAME "/xbarto96_bus"
 #define TMP_RIDER_NAME "/xbarto96_tmpRider"
 #define WRITER_NAME "/xbarto96_writer"
@@ -38,7 +40,7 @@ sem_t   *Sbus=NULL,
         *Swriter=NULL,
         **Srider;
 int sharedId=0;
-int *counter=NULL;
+int *shm_countID=NULL;
 FILE *file;
 
 
@@ -51,18 +53,22 @@ void createBus(Params param);
 int main(int argc,char** args) {
     setbuf(stdout,NULL);
 
-    if((file = fopen(FILE_NAME,"w"))==NULL)
+    if((file = fopen(FILE_NAME,"w"))==NULL) {
+        fclose(file);
         error("Error - Opening file");
+    }
 
+//TODO podmínky
     initArgs(argc,args,COUNT_PARAM);
-    Sbus=sem_open(BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
-    StmpRider=sem_open(TMP_RIDER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
-    Swriter=sem_open(WRITER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
-
-
+    Sbus=sem_open(BUS_NAME,O_EXCL,0666,LOCKED);
+    StmpRider=sem_open(TMP_RIDER_NAME,O_EXCL,0666,LOCKED);
+    Swriter=sem_open(WRITER_NAME,O_EXCL,0666,LOCKED);
+    
 
     sharedId=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
-    counter=shmat(sharedId, NULL, 0);
+    shm_countID=shmat(sharedId, NULL, 0);
+    (*shm_countID)=1;
+
 
     pid_t* SRiders= malloc(Tparam.R* sizeof(pid_t));
 
@@ -83,7 +89,8 @@ int main(int argc,char** args) {
             }
         }
         for(int i=1;i<=Tparam.R;i++){
-            waitpid(SRiders[i],NULL,0);
+            if(SRiders[i]!=0)
+                waitpid(SRiders[i],NULL,0);
         }
     } else if(mainPid>0){
         pid_t busPid=fork();
@@ -111,18 +118,26 @@ int main(int argc,char** args) {
 
 void createRider(Params param,int i){
     int counter=i;
+
     srandom((unsigned int) time(NULL));
     int delay= (int) (random() % (param.ART + 1));
+    usleep((__useconds_t) (delay * 1000));
     sem_wait(Swriter);
-    fprintf(file,"%d\t: RID %d\t: start ",NULL,counter);  //TODO
+    fprintf(file,"%d\t: RID %d\t: start ",*shm_countID,counter);  //TODO
+    fflush(file);
+    (*shm_countID)++;
     sem_post(Swriter);
 }
 
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
-    int delay= (int) (random() % (param.ART + 1));
+    int delay= (int) (random() % (param.ABT + 1));
+    usleep((__useconds_t) (delay * 1000));
+
     sem_wait(Swriter);
-    fprintf(file,"%d\t: BUS \t: start ",counter);
+    fprintf(file,"%d\t: BUS \t: start ",*shm_countID);
+    fflush(file);
+    (*shm_countID)++;
     sem_post(Swriter);
 }
 
