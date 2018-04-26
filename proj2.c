@@ -7,13 +7,15 @@
 #include <fcntl.h>
 #include <sys/shm.h>
 #include <signal.h>
+#include <time.h>
 
 
 #define COUNT_PARAM 5
 #define SHM_NAME "/xbarto96_shm_name"
-#define SEM1_NAME "/xbarto96_sem1"
-#define SEM2_NAME "/xbarto96_sem2"
-
+#define BUS_NAME "/xbarto96_bus"
+#define TMP_RIDER_NAME "/xbarto96_tmpRider"
+#define WRITER_NAME "/xbarto96_writer"
+#define FILE_NAME "proj2.out"
 
 #define LOCKED 0
 
@@ -30,28 +32,35 @@ typedef struct{
 //---------------Global--Variables----------//
 
 Params Tparam;
-sem_t *bus=NULL;
-sem_t *tmpRider=NULL;
-sem_t **rider;
+
+sem_t   *Sbus=NULL,
+        *StmpRider=NULL,
+        *Swriter=NULL,
+        **Srider;
 int sharedId=0;
 int *counter=NULL;
+FILE *file;
 
 
 //---------------Prototype--functions--------//
 void error(char* text);
 void initArgs(int argc,char** args,int count);
-
+void createRider(Params param,int i);
 
 //----------Main-----------------------//
 int main(int argc,char** args) {
     setbuf(stdout,NULL);
+
+    if((file = fopen(FILE_NAME,"w"))==NULL)
+        error("Error - Opening file");
+
     initArgs(argc,args,COUNT_PARAM);
-    if((bus=sem_open(SEM1_NAME,O_CREAT|O_EXCL,0666,LOCKED))==SEM_FAILED){
+    Sbus=sem_open(BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    StmpRider=sem_open(TMP_RIDER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    Swriter=sem_open(WRITER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
 
-    }
-    if((tmpRider=sem_open(SEM2_NAME,O_CREAT|O_EXCL,0666,LOCKED))==SEM_FAILED){
 
-    }
+
     sharedId=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     counter=shmat(sharedId, NULL, 0);
 
@@ -64,7 +73,7 @@ int main(int argc,char** args) {
         processPid=fork();
 
         if(processPid==0){
-
+            createRider(Tparam,i);
         } else if(processPid>0){
             riders[i]=processPid;
         } else{
@@ -81,17 +90,23 @@ int main(int argc,char** args) {
     waitpid(processPid,NULL,0);
     printf("End paren \n");
 
-    sem_close(bus);
-    sem_close(tmpRider);
-
-    sem_unlink(SEM1_NAME);
-    sem_unlink(SEM2_NAME);
+    sem_close(Sbus);
+    sem_close(StmpRider);
+    sem_close(Swriter);
+    sem_unlink(BUS_NAME);
+    sem_unlink(TMP_RIDER_NAME);
+    sem_unlink(WRITER_NAME);
 
     return 0;
 }
 
-void createRider(){
-
+void createRider(Params param,int i){
+    int counter=i;
+    srandom((unsigned int) time(NULL));
+    int delay= (int) (random() % (param.ART + 1));
+    sem_wait(Swriter);
+    fprintf(file,"");
+    sem_post(Swriter);
 }
 
 void createBus(){
