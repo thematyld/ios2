@@ -1,0 +1,4 @@
+/home/mabartos/Documents/CLion/CLion-2018.1.2/clion-2018.1.2/bin/cmake/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/mabartos/Documents/Private/VUT/IOS/Proj2
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/mabartos/Documents/Private/VUT/IOS/Proj2/cmake-build-debug
