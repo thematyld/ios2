@@ -46,7 +46,7 @@ FILE *file;
 void error(char* text);
 void initArgs(int argc,char** args,int count);
 void createRider(Params param,int i);
-
+void createBus(Params param);
 //----------Main-----------------------//
 int main(int argc,char** args) {
     setbuf(stdout,NULL);
@@ -64,31 +64,40 @@ int main(int argc,char** args) {
     sharedId=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     counter=shmat(sharedId, NULL, 0);
 
-    pid_t* riders= malloc(Tparam.R* sizeof(pid_t));
-    pid_t processPid;
-    if(riders==NULL)
+    pid_t* SRiders= malloc(Tparam.R* sizeof(pid_t));
+
+
+    if(SRiders==NULL)
         error("Error - Create array of pid_t riders!!");
 
-    for(unsigned int i=1;i<=Tparam.R;i++){
-        processPid=fork();
-
-        if(processPid==0){
-            createRider(Tparam,i);
-        } else if(processPid>0){
-            riders[i]=processPid;
-        } else{
-            error("Error - Create riders!!");
+    pid_t mainPid=fork();
+    if(mainPid==0) {
+        for (unsigned int i = 1; i <= Tparam.R; i++) {
+            pid_t ridersPid = fork();
+            if (ridersPid == 0) {
+                createRider(Tparam, i);
+            } else if (ridersPid > 0) {
+                SRiders[i] = ridersPid;
+            } else {
+                error("Error - Create riders!!");
+            }
         }
-
+        for(int i=1;i<=Tparam.R;i++){
+            waitpid(SRiders[i],NULL,0);
+        }
+    } else if(mainPid>0){
+        pid_t busPid=fork();
+        if(busPid==0){
+            createBus(Tparam);
+        }else if(busPid>0){
+            waitpid(busPid,NULL,0);
+        } else{
+            error("Error - Create bus!!");
+        }
+    } else{
+        error("Error - Create subs");
     }
 
-    for(int i=1;i<=Tparam.R;i++){
-        printf("%d\n",riders[i]);
-    }
-
-
-    waitpid(processPid,NULL,0);
-    printf("End paren \n");
 
     sem_close(Sbus);
     sem_close(StmpRider);
@@ -105,12 +114,16 @@ void createRider(Params param,int i){
     srandom((unsigned int) time(NULL));
     int delay= (int) (random() % (param.ART + 1));
     sem_wait(Swriter);
-    fprintf(file,"");
+    fprintf(file,"%d\t: RID %d\t: start ",NULL,counter);  //TODO
     sem_post(Swriter);
 }
 
-void createBus(){
-
+void createBus(Params param){
+    srandom((unsigned int) time(NULL));
+    int delay= (int) (random() % (param.ART + 1));
+    sem_wait(Swriter);
+    fprintf(file,"%d\t: BUS \t: start ",counter);
+    sem_post(Swriter);
 }
 
 
