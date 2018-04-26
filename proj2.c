@@ -30,21 +30,33 @@ void errorArgs(){
 void initArgs(int argc,char** args,int count){
     if(argc == count) {
         for(int i=1;i<count;i++){
-            unsigned int tmp=(unsigned int)strtol(args[i],NULL,10);
-            if(tmp<=0)
+            int tmp=(int)strtol(args[i],NULL,10);
+            if(tmp<0)
                 errorArgs();
             switch(i){
                 case 1:
-                    tmp>0 ? param.R=tmp : errorArgs();
+                    if(tmp>0)
+                        param.R=(unsigned int)tmp;
+                    else
+                        errorArgs();
                     break;
                 case 2:
-                    tmp>0 ? param.C=tmp : errorArgs();
+                    if(tmp>0)
+                        param.C=(unsigned int)tmp;
+                    else
+                        errorArgs();
                     break;
                 case 3:
-                    tmp>0 && tmp<=1000 ? param.ART=tmp : errorArgs();
+                    if(tmp>=0 && tmp<=1000)
+                        param.ART=(unsigned int)tmp;
+                    else
+                        errorArgs();
                     break;
                 case 4:
-                    tmp>0 && tmp<=1000 ? param.ABT=tmp : errorArgs();
+                    if(tmp>=0 && tmp<=1000)
+                        param.ABT=(unsigned int)tmp;
+                    else
+                        errorArgs();
                     break;
             }
         }
