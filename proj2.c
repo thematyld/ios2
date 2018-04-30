@@ -8,6 +8,8 @@
 #include <sys/shm.h>
 #include <signal.h>
 #include <time.h>
+#include <string.h>
+#include <ctype.h>
 
 #define COUNT_PARAM 5
 
@@ -21,7 +23,7 @@
 
 
 #define FILE_NAME "proj2.out"
-#define LOCKED 0
+#define LOCKED 1
 
 
 //--------------TypeDef-----------------//
@@ -46,18 +48,18 @@ sem_t   *S_depart=NULL,
         *S_completed=NULL;
 
 int busThereID=0,
-    capStationID=0,
-    ridIDid=0,
-    boardedID=0,
-    stillRidID=0,
+        capStationID=0,
+        ridIDid=0,
+        boardedID=0,
+        stillRidID=0,
         lineIDid=0,
         counterRidID=0;
 
 int *busThere=NULL,
-    *capStation=NULL,
-    *ridID=NULL,
-    *boarded=NULL,
-    *stillRid=NULL,
+        *capStation=NULL,
+        *ridID=NULL,
+        *boarded=NULL,
+        *stillRid=NULL,
         *lineID=NULL,
         *counterRid=NULL;
 
@@ -76,6 +78,7 @@ void initSem();
 void initSHM();
 void killAll();
 void incLineID();
+int isNumber(char* string);
 
 void initSem(){         //TODO
 
@@ -107,17 +110,16 @@ void initSHM(){
     counterRid=shmat(counterRidID, NULL, 0);
 
     *busThere=0;
-    *capStation=Tparam.C;
+    *capStation=0;
     *ridID=1;
     *boarded=0;
     *stillRid=Tparam.R;
-    *lineID=1;
+    *lineID=0;
     *counterRid=0;
 }
 
 //----------Main-----------------------//
 int main(int argc,char** args) {
-
     if((file = fopen(FILE_NAME,"w"))==NULL) {
         error("Error - Opening file");
     }
@@ -135,6 +137,7 @@ int main(int argc,char** args) {
         error("Error - Create array of pid_t riders!!");
 
     mainPid=fork();
+
     if(mainPid==0) {
         for (unsigned int i = 1; i <= Tparam.R; i++) {
             pid_t ridersPid = fork();
@@ -152,7 +155,7 @@ int main(int argc,char** args) {
                 error("Error - Create riders!!");
             }
         }
-        for(int i=1;i<=Tparam.R;i++){
+        for(unsigned int i=1;i<=Tparam.R;i++){
             if(SRiders[i]!=0)
                 waitpid(SRiders[i],NULL,0);
         }
@@ -217,6 +220,16 @@ void incLineID(){
     sem_post(S_counter);
 }
 
+int isNumber(char* string){
+    char* tmp=string;
+    size_t len=strlen(tmp);
+    for(int i=0;i<len;i++){
+        if(!isdigit(tmp[i]))
+            return(-1);
+    }
+    return 0;
+}
+
 void createRider(Params param) {
     boolean isTransp = false;
 
@@ -227,16 +240,17 @@ void createRider(Params param) {
     incLineID();
 
     sem_wait(S_writer);
-    fprintf(file, "%d\t: RID %d\t: start ", *lineID, *counterRid);
+    fprintf(file, "%d\t: RID %d\t: start \n", *lineID, *counterRid);
     sem_post(S_writer);
 
-    if ((*capStation) < param.C && (*busThere) != 1) {
+    if ((unsigned int)(*capStation) < param.C && (*busThere)!=1) {
+
         sem_wait(S_counter);
         (*capStation)++;
         sem_post(S_counter);
         incLineID();
         sem_wait(S_writer);
-        fprintf(file, "%d\t: RID %d\t: enter: %d",
+        fprintf(file, "%d\t: RID %d\t: enter: %d\n",
                 *lineID,
                 *counterRid,
                 *capStation);
@@ -244,19 +258,18 @@ void createRider(Params param) {
     } else {
         while (!isTransp) {
             sem_wait(S_depart);
-            if (*capStation < param.C) {
+            if ((unsigned int)*capStation < param.C) {
                 isTransp = true;
                 incLineID();
                 sem_wait(S_counter);
                 (*capStation)++;
                 sem_post(S_counter);
                 sem_wait(S_writer);
-                fprintf(file, "%d\t: RID %d\t: enter: %d",
+                fprintf(file, "%d\t: RID %d\t: enters: %d\n",
                         *lineID,
                         *counterRid,
                         *capStation);
                 sem_post(S_writer);
-                sem_post(S_completed);
             }
         }
     }
@@ -264,26 +277,24 @@ void createRider(Params param) {
     incLineID();
 
     sem_wait(S_writer);
-    fprintf(file, "%d\t: RID %d\t: boarding",
+    fprintf(file, "%d\t: RID %d\t: boarding\n",
             *lineID,
             *counterRid);
     sem_post(S_writer);
 
     sem_wait(S_counter);
-        (*capStation)--;
+    (*capStation)--;
+    (*boarded)++;
     sem_post(S_counter);
 
     if(*capStation==0){
         sem_post(S_fullBus);
     }
-    sem_post(S_completed);
-    sem_wait(S_endRid);
-    (*stillRid)--;
-    sem_wait(S_endRid);
 
+    sem_wait(S_endRid);
     incLineID();
     sem_wait(S_writer);
-        fprintf(file,"%d\t: RID %d\t: finish",
+    fprintf(file,"%d\t: RID %d\t: finish\n",
             *lineID,
             *counterRid);
     sem_post(S_writer);
@@ -292,50 +303,70 @@ void createRider(Params param) {
 
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
-    long delay= (random() % (param.ABT + 1));
+
 
     sem_wait(S_counter);
-        (*busThere)=true;
+    (*busThere)=1;
     sem_post(S_counter);
 
     incLineID();
     sem_wait(S_writer);
-        fprintf(file,"%d\t: BUS \t: start ",*lineID);
+    fprintf(file,"%d\t: BUS \t: start \n",*lineID);
     sem_post(S_writer);
 
     while((*stillRid) != 0){
-        sem_post(S_arrBus);
+        long delay= (random() % (param.ABT + 1));
+        sem_wait(S_counter);
+        (*busThere)=1;
+        sem_post(S_counter);
+
         incLineID();
         sem_wait(S_writer);
-            fprintf(file,"%d\t: BUS \t: arrival ",*lineID);
+        fprintf(file,"%d\t: BUS \t: arrival \n",*lineID);
         sem_post(S_writer);
 
         if((*capStation)>0) {
             incLineID();
             sem_wait(S_writer);
-            fprintf(file, "%d\t: BUS \t: start boarding: %d",
+            fprintf(file, "%d\t: BUS \t: start boarding: %d\n",
                     *lineID,
                     *capStation);
             sem_post(S_writer);
+
+            sem_post(S_depart);
+
+            sem_post(S_arrBus);
+
+            incLineID();
+
             sem_wait(S_fullBus);
+
+
+            sem_wait(S_counter);
+            (*stillRid)-=(*boarded);
+            (*boarded)=0;
+            sem_post(S_counter);
+
+            sem_post(S_endRid);
+
         }
         incLineID();
         sem_wait(S_writer);
-        fprintf(file,"%d\t: BUS \t: depart",
+        fprintf(file, "%d\t: BUS \t: depart\n",
                 *lineID);
         sem_post(S_writer);
-        sem_post(S_depart);
+
         sem_wait(S_counter);
-        (*busThere=false);
+        (*busThere = 0);
         sem_post(S_counter);
 
+
         usleep((__useconds_t) (delay * 1000));
-        sem_wait(S_completed);
-        sem_post(S_endRid);
+
     }
     sem_wait(S_writer);
-        incLineID();
-        fprintf(file,"%d\t: BUS \t: finish",*lineID);
+    incLineID();
+    fprintf(file,"%d\t: BUS \t: finish\n",*lineID);
     sem_post(S_writer);
 
 }
@@ -353,9 +384,11 @@ void error(char* text){
 void initArgs(int argc,char** args,int count){
     if(argc == count) {
         for(int i=1;i<count;i++){
+            if(isNumber(args[i])==-1)
+                error("Wrong arguments!!");
             int tmp=(int)strtol(args[i],NULL,10);
             if(tmp<0)
-                error("Bad arguments!!");
+                error("Wrong arguments!!");
             switch(i){
                 case 1:
                     if(tmp>0)
