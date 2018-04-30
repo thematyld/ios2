@@ -9,14 +9,10 @@
 #include <signal.h>
 #include <time.h>
 
-
 #define COUNT_PARAM 5
-
-#define SHM_NAME "/xbarto96_shm_name"
 
 #define DEPART_NAME "/xbarto96_depart"
 #define ARR_BUS_NAME "/xbarto96_arr_bus"
-#define WRITER_NAME "/xbarto96_writer"
 #define WRITER_NAME "/xbarto96_writer"
 #define FULL_BUS_NAME "/xbarto96_writer"
 #define END_RID_NAME "/xbarto96_end_rid"
@@ -47,20 +43,25 @@ sem_t   *S_depart=NULL,
         *S_fullBus=NULL,
         *S_endRid=NULL,
         *S_counter=NULL,
-        *S_completed=NULL,
-        **Srider=NULL;
+        *S_completed=NULL;
 
-int busThereID=0;
-int capStationID=0;
-int ridIDid=0;
-int boardedID=0;
-int stillRidID=0;
+int busThereID=0,
+    capStationID=0,
+    ridIDid=0,
+    boardedID=0,
+    stillRidID=0,
+        lineIDid=0,
+        counterRidID=0;
 
-int *busThere=NULL;
-int *capStation=NULL;
-int *ridID=NULL;
-int *boarded=NULL;
-int *stillRid=NULL;
+int *busThere=NULL,
+    *capStation=NULL,
+    *ridID=NULL,
+    *boarded=NULL,
+    *stillRid=NULL,
+        *lineID=NULL,
+        *counterRid=NULL;
+
+pid_t mainPid;
 
 FILE *file;
 
@@ -68,8 +69,13 @@ FILE *file;
 //---------------Prototype--functions--------//
 void error(char* text);
 void initArgs(int argc,char** args,int count);
-void createRider(Params param,int i);
+void createRider(Params param);
 void createBus(Params param);
+void freeSources();
+void initSem();
+void initSHM();
+void killAll();
+void incLineID();
 
 void initSem(){         //TODO
 
@@ -89,23 +95,28 @@ void initSHM(){
     ridIDid=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     boardedID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     stillRidID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    lineIDid=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    counterRidID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
 
     busThere=shmat(busThereID, NULL, 0);
     capStation=shmat(capStationID, NULL, 0);
     ridID=shmat(ridIDid, NULL, 0);
     boarded=shmat(boardedID, NULL, 0);
     stillRid=shmat(stillRidID, NULL, 0);
+    lineID=shmat(lineIDid, NULL, 0);
+    counterRid=shmat(counterRidID, NULL, 0);
 
     *busThere=0;
     *capStation=Tparam.C;
     *ridID=1;
     *boarded=0;
     *stillRid=Tparam.R;
+    *lineID=1;
+    *counterRid=0;
 }
 
 //----------Main-----------------------//
 int main(int argc,char** args) {
-
 
     if((file = fopen(FILE_NAME,"w"))==NULL) {
         error("Error - Opening file");
@@ -123,16 +134,21 @@ int main(int argc,char** args) {
     if(SRiders==NULL)
         error("Error - Create array of pid_t riders!!");
 
-    pid_t mainPid=fork();
+    mainPid=fork();
     if(mainPid==0) {
         for (unsigned int i = 1; i <= Tparam.R; i++) {
             pid_t ridersPid = fork();
             if (ridersPid == 0) {
-                createRider(Tparam, i);
-                exit(0);                //TODO
+                srandom((unsigned int) time(NULL));
+                long delay= (random() % (Tparam.ART + 1));
+                usleep((__useconds_t) (delay * 1000));
+                createRider(Tparam);
+                freeSources();
+                exit(0);
             } else if (ridersPid > 0) {
                 SRiders[i] = ridersPid;
             } else {
+                killAll();
                 error("Error - Create riders!!");
             }
         }
@@ -148,24 +164,15 @@ int main(int argc,char** args) {
         }else if(busPid>0){
             waitpid(busPid,NULL,0);
         } else{
+            killAll();
             error("Error - Create bus!!");
         }
     } else{
+        killAll();
         error("Error - Create subs");
     }
 
-
-    sem_close(Sbus);
-    sem_close(StmpRider);
-    sem_close(Swriter);
-
-    sem_destroy(Sbus);
-    sem_destroy(StmpRider);
-    sem_destroy(Swriter);
-    sem_unlink(BUS_NAME);
-    sem_unlink(TMP_RIDER_NAME);
-    sem_unlink(WRITER_NAME);
-
+    freeSources();
     return 0;
 }
 
@@ -176,55 +183,167 @@ void freeSources(){
        sem_destroy(S_counter)   == -1  ||
        sem_destroy(S_endRid)    == -1  ||
        sem_destroy(S_fullBus)   == -1  ||
-       sem_destroy(S_writer)    == -1) {
-        fprintf(stderr,"Error - Removing semaphores!!");
+       sem_destroy(S_writer)    == -1
+            ) {
+        error("Error - Removing semaphores!!");
     }
 
-    if(shmctl(shm_H_id, IPC_RMID, NULL) == -1 ||
-       shmctl(shm_O_id, IPC_RMID, NULL) == -1 ||
-       shmctl(shm_p_id, IPC_RMID, NULL) == -1 ||
-       shmctl(shm_c_id, IPC_RMID, NULL) == -1 ||
-       shmctl(shm_d_id, IPC_RMID, NULL) == -1 ||
-       shmdt(count) == -1 ||
-       shmdt(n_done) == -1 ||
-       shmdt(process_id) == -1 ||
-       shmdt(H_id) == -1 ||
-       shmdt(O_id) == -1 ){
-        err = EXIT_SHM;
+    if(shmctl(busThereID, IPC_RMID, NULL)   == -1 ||
+       shmctl(capStationID, IPC_RMID, NULL) == -1 ||
+       shmctl(ridIDid, IPC_RMID, NULL)      == -1 ||
+       shmctl(boardedID, IPC_RMID, NULL)    == -1 ||
+       shmctl(stillRidID, IPC_RMID, NULL)   == -1 ||
+       shmdt(busThere)      == -1 ||
+       shmdt(capStation)    == -1 ||
+       shmdt(ridID)         == -1 ||
+       shmdt(boarded)       == -1 ||
+       shmdt(stillRid)      == -1
+            ) {
+        error("Error - Removing shared memory!!");
     }
+
+    sem_unlink(DEPART_NAME);
+    sem_unlink(ARR_BUS_NAME);
+    sem_unlink(WRITER_NAME);
+    sem_unlink(FULL_BUS_NAME);
+    sem_unlink(END_RID_NAME);
+    sem_unlink(COUNTER_NAME);
+    sem_unlink(COMPLETED_NAME);
 
 }
+void incLineID(){
+    sem_wait(S_counter);
+    (*lineID)++;
+    sem_post(S_counter);
+}
 
-void createRider(Params param,int i){
-    int counter=i;
+void createRider(Params param) {
+    boolean isTransp = false;
 
-    srandom((unsigned int) time(NULL));
-    int delay= (int) (random() % (param.ART + 1));
-    usleep((__useconds_t) (delay * 1000));
-    sem_wait(Swriter);
-    fprintf(file,"%d\t: RID %d\t: start ",*shm_countID,counter);  //TODO
-    (*shm_countID)++;
-    sem_post(Swriter);
+    sem_wait(S_counter);
+    (*counterRid)++;
+    sem_post(S_counter);
+
+    incLineID();
+
+    sem_wait(S_writer);
+    fprintf(file, "%d\t: RID %d\t: start ", *lineID, *counterRid);
+    sem_post(S_writer);
+
+    if ((*capStation) < param.C && (*busThere) != 1) {
+        sem_wait(S_counter);
+        (*capStation)++;
+        sem_post(S_counter);
+        incLineID();
+        sem_wait(S_writer);
+        fprintf(file, "%d\t: RID %d\t: enter: %d",
+                *lineID,
+                *counterRid,
+                *capStation);
+        sem_post(S_writer);
+    } else {
+        while (!isTransp) {
+            sem_wait(S_depart);
+            if (*capStation < param.C) {
+                isTransp = true;
+                incLineID();
+                sem_wait(S_counter);
+                (*capStation)++;
+                sem_post(S_counter);
+                sem_wait(S_writer);
+                fprintf(file, "%d\t: RID %d\t: enter: %d",
+                        *lineID,
+                        *counterRid,
+                        *capStation);
+                sem_post(S_writer);
+                sem_post(S_completed);
+            }
+        }
+    }
+    sem_wait(S_arrBus);
+    incLineID();
+
+    sem_wait(S_writer);
+    fprintf(file, "%d\t: RID %d\t: boarding",
+            *lineID,
+            *counterRid);
+    sem_post(S_writer);
+
+    sem_wait(S_counter);
+        (*capStation)--;
+    sem_post(S_counter);
+
+    if(*capStation==0){
+        sem_post(S_fullBus);
+    }
+    sem_post(S_completed);
+    sem_wait(S_endRid);
+    (*stillRid)--;
+    sem_wait(S_endRid);
+
+    incLineID();
+    sem_wait(S_writer);
+        fprintf(file,"%d\t: RID %d\t: finish",
+            *lineID,
+            *counterRid);
+    sem_post(S_writer);
+
 }
 
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
     long delay= (random() % (param.ABT + 1));
 
-    usleep((__useconds_t) (delay * 1000));
+    sem_wait(S_counter);
+        (*busThere)=true;
+    sem_post(S_counter);
 
-    sem_wait(Swriter);
-    fprintf(file,"%d\t: BUS \t: start ",*shm_countID);
-    (*shm_countID)++; //TODO
-    sem_post(Swriter);
+    incLineID();
+    sem_wait(S_writer);
+        fprintf(file,"%d\t: BUS \t: start ",*lineID);
+    sem_post(S_writer);
 
-    while(param.R!=0){  //TODO
+    while((*stillRid) != 0){
+        sem_post(S_arrBus);
+        incLineID();
+        sem_wait(S_writer);
+            fprintf(file,"%d\t: BUS \t: arrival ",*lineID);
+        sem_post(S_writer);
 
+        if((*capStation)>0) {
+            incLineID();
+            sem_wait(S_writer);
+            fprintf(file, "%d\t: BUS \t: start boarding: %d",
+                    *lineID,
+                    *capStation);
+            sem_post(S_writer);
+            sem_wait(S_fullBus);
+        }
+        incLineID();
+        sem_wait(S_writer);
+        fprintf(file,"%d\t: BUS \t: depart",
+                *lineID);
+        sem_post(S_writer);
+        sem_post(S_depart);
+        sem_wait(S_counter);
+        (*busThere=false);
+        sem_post(S_counter);
 
-
+        usleep((__useconds_t) (delay * 1000));
+        sem_wait(S_completed);
+        sem_post(S_endRid);
     }
-}
+    sem_wait(S_writer);
+        incLineID();
+        fprintf(file,"%d\t: BUS \t: finish",*lineID);
+    sem_post(S_writer);
 
+}
+void killAll(){
+    freeSources();
+    kill(mainPid,SIGTERM);
+    kill(getpid(),SIGTERM);
+}
 
 void error(char* text){
     fprintf(stderr,"%s\n",text);
