@@ -14,11 +14,17 @@
 
 #define SHM_NAME "/xbarto96_shm_name"
 
-#define BUS_NAME "/xbarto96_bus"
-#define TMP_RIDER_NAME "/xbarto96_tmpRider"
+#define DEPART_NAME "/xbarto96_depart"
+#define ARR_BUS_NAME "/xbarto96_arr_bus"
 #define WRITER_NAME "/xbarto96_writer"
-#define FILE_NAME "proj2.out"
+#define WRITER_NAME "/xbarto96_writer"
+#define FULL_BUS_NAME "/xbarto96_writer"
+#define END_RID_NAME "/xbarto96_end_rid"
+#define COUNTER_NAME "/xbarto96_counter"
+#define COMPLETED_NAME "/xbarto96_completed"
 
+
+#define FILE_NAME "proj2.out"
 #define LOCKED 0
 
 
@@ -35,12 +41,27 @@ typedef struct{
 
 Params Tparam;
 
-sem_t   *Sbus=NULL,
-        *StmpRider=NULL,
-        *Swriter=NULL,
-        **Srider;
-int sharedId=0;
-int *shm_countID=NULL;
+sem_t   *S_depart=NULL,
+        *S_arrBus=NULL,
+        *S_writer=NULL,
+        *S_fullBus=NULL,
+        *S_endRid=NULL,
+        *S_counter=NULL,
+        *S_completed=NULL,
+        **Srider=NULL;
+
+int busThereID=0;
+int capStationID=0;
+int ridIDid=0;
+int boardedID=0;
+int stillRidID=0;
+
+int *busThere=NULL;
+int *capStation=NULL;
+int *ridID=NULL;
+int *boarded=NULL;
+int *stillRid=NULL;
+
 FILE *file;
 
 
@@ -49,29 +70,55 @@ void error(char* text);
 void initArgs(int argc,char** args,int count);
 void createRider(Params param,int i);
 void createBus(Params param);
+
+void initSem(){         //TODO
+
+    S_depart=sem_open(DEPART_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_arrBus=sem_open(ARR_BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_writer=sem_open(WRITER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_fullBus=sem_open(FULL_BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_endRid=sem_open(END_RID_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_counter=sem_open(COUNTER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+    S_completed=sem_open(COMPLETED_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+
+}
+
+void initSHM(){
+    busThereID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    capStationID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    ridIDid=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    boardedID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+    stillRidID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
+
+    busThere=shmat(busThereID, NULL, 0);
+    capStation=shmat(capStationID, NULL, 0);
+    ridID=shmat(ridIDid, NULL, 0);
+    boarded=shmat(boardedID, NULL, 0);
+    stillRid=shmat(stillRidID, NULL, 0);
+
+    *busThere=0;
+    *capStation=Tparam.C;
+    *ridID=1;
+    *boarded=0;
+    *stillRid=Tparam.R;
+}
+
 //----------Main-----------------------//
 int main(int argc,char** args) {
-    setbuf(stdout,NULL);
+
 
     if((file = fopen(FILE_NAME,"w"))==NULL) {
-        fclose(file);
         error("Error - Opening file");
     }
+    setbuf(file,NULL);
 
-//TODO podmínky
+    //-----------Initializations---------
     initArgs(argc,args,COUNT_PARAM);
-    Sbus=sem_open(BUS_NAME,O_EXCL,0666,LOCKED);
-    StmpRider=sem_open(TMP_RIDER_NAME,O_EXCL,0666,LOCKED);
-    Swriter=sem_open(WRITER_NAME,O_EXCL,0666,LOCKED);
-    
-
-    sharedId=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
-    shm_countID=shmat(sharedId, NULL, 0);
-    (*shm_countID)=1;
+    initSem();
+    initSHM();
 
 
     pid_t* SRiders= malloc(Tparam.R* sizeof(pid_t));
-
 
     if(SRiders==NULL)
         error("Error - Create array of pid_t riders!!");
@@ -82,6 +129,7 @@ int main(int argc,char** args) {
             pid_t ridersPid = fork();
             if (ridersPid == 0) {
                 createRider(Tparam, i);
+                exit(0);                //TODO
             } else if (ridersPid > 0) {
                 SRiders[i] = ridersPid;
             } else {
@@ -96,6 +144,7 @@ int main(int argc,char** args) {
         pid_t busPid=fork();
         if(busPid==0){
             createBus(Tparam);
+            exit(0);            //TODO
         }else if(busPid>0){
             waitpid(busPid,NULL,0);
         } else{
@@ -109,11 +158,41 @@ int main(int argc,char** args) {
     sem_close(Sbus);
     sem_close(StmpRider);
     sem_close(Swriter);
+
+    sem_destroy(Sbus);
+    sem_destroy(StmpRider);
+    sem_destroy(Swriter);
     sem_unlink(BUS_NAME);
     sem_unlink(TMP_RIDER_NAME);
     sem_unlink(WRITER_NAME);
 
     return 0;
+}
+
+void freeSources(){
+    if(sem_destroy(S_depart)    == -1  ||
+       sem_destroy(S_arrBus)    == -1  ||
+       sem_destroy(S_completed) == -1  ||
+       sem_destroy(S_counter)   == -1  ||
+       sem_destroy(S_endRid)    == -1  ||
+       sem_destroy(S_fullBus)   == -1  ||
+       sem_destroy(S_writer)    == -1) {
+        fprintf(stderr,"Error - Removing semaphores!!");
+    }
+
+    if(shmctl(shm_H_id, IPC_RMID, NULL) == -1 ||
+       shmctl(shm_O_id, IPC_RMID, NULL) == -1 ||
+       shmctl(shm_p_id, IPC_RMID, NULL) == -1 ||
+       shmctl(shm_c_id, IPC_RMID, NULL) == -1 ||
+       shmctl(shm_d_id, IPC_RMID, NULL) == -1 ||
+       shmdt(count) == -1 ||
+       shmdt(n_done) == -1 ||
+       shmdt(process_id) == -1 ||
+       shmdt(H_id) == -1 ||
+       shmdt(O_id) == -1 ){
+        err = EXIT_SHM;
+    }
+
 }
 
 void createRider(Params param,int i){
@@ -124,21 +203,26 @@ void createRider(Params param,int i){
     usleep((__useconds_t) (delay * 1000));
     sem_wait(Swriter);
     fprintf(file,"%d\t: RID %d\t: start ",*shm_countID,counter);  //TODO
-    fflush(file);
     (*shm_countID)++;
     sem_post(Swriter);
 }
 
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
-    int delay= (int) (random() % (param.ABT + 1));
+    long delay= (random() % (param.ABT + 1));
+
     usleep((__useconds_t) (delay * 1000));
 
     sem_wait(Swriter);
     fprintf(file,"%d\t: BUS \t: start ",*shm_countID);
-    fflush(file);
-    (*shm_countID)++;
+    (*shm_countID)++; //TODO
     sem_post(Swriter);
+
+    while(param.R!=0){  //TODO
+
+
+
+    }
 }
 
 
@@ -178,8 +262,11 @@ void initArgs(int argc,char** args,int count){
                     else
                         error("Bad arguments!!");
                     break;
+                default:
+                    break;
             }
         }
     }
     else
-        error("Bad arguments!!");}
+        error("Bad arguments!!");
+}
