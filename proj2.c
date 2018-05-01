@@ -1,3 +1,8 @@
+/**
+ * @author - Martin Bartos
+ * IOS 2017/2018 proj no.2
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -80,6 +85,7 @@ void killAll();
 void incLineID();
 int isNumber(char* string);
 
+//------------------------Initialize-Semaphores------------------//
 void initSem(){
     S_depart=sem_open(DEPART_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_arrBus=sem_open(ARR_BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
@@ -88,9 +94,9 @@ void initSem(){
     S_endRid=sem_open(END_RID_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_counter=sem_open(COUNTER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_completed=sem_open(COMPLETED_NAME,O_CREAT|O_EXCL,0666,LOCKED);
-
 }
 
+//------------------------Initialize-shared-memory------------------//
 void initSHM(){
     busThereID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     capStationID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
@@ -100,6 +106,7 @@ void initSHM(){
     lineIDid=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     counterRidID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
 
+    // Check successful
     if(busThereID   ==-1   ||
        capStationID ==-1   ||
        ridIDid      ==-1   ||
@@ -138,15 +145,13 @@ void initSHM(){
     *counterRid=0;
 }
 
-//----------Main-----------------------//
+//-------------------------Main------------------//
 int main(int argc,char** args) {
     if((file = fopen(FILE_NAME,"w"))==NULL) {
         error("Error - Opening file");
     }
     setbuf(file,NULL);
 
-    signal(SIGTERM, killAll);
-    signal(SIGINT, killAll);
     //-----------Initializations---------
     initArgs(argc,args,COUNT_PARAM);
     initSem();
@@ -184,7 +189,7 @@ int main(int argc,char** args) {
         pid_t busPid=fork();
         if(busPid==0){
             createBus(Tparam);
-            exit(0);            //TODO
+            exit(0);
         }else if(busPid>0){
             waitpid(busPid,NULL,0);
         }else{
@@ -200,6 +205,7 @@ int main(int argc,char** args) {
     return 0;
 }
 
+//------------------------Free-Sources------------------//
 void freeSources(){
     fclose(file);
     if(sem_destroy(S_depart)    == -1  ||
@@ -235,12 +241,15 @@ void freeSources(){
     sem_unlink(COUNTER_NAME);
     sem_unlink(COMPLETED_NAME);
 }
+
+//------------------------Increment-LineID------------------//
 void incLineID(){
     sem_wait(S_counter);
     (*lineID)++;
     sem_post(S_counter);
 }
 
+//------------------------Check-if-its-number-------------------//
 int isNumber(char* string){
     char* tmp=string;
     size_t len=strlen(tmp);
@@ -251,6 +260,7 @@ int isNumber(char* string){
     return 0;
 }
 
+//------------------------Create-Rider------------------//
 void createRider(Params param) {
     boolean isTransp = false;
 
@@ -264,6 +274,7 @@ void createRider(Params param) {
     fprintf(file, "%d\t: RID %d\t: start \n", *lineID, *counterRid);
     sem_post(S_writer);
 
+    //If count of riders at station is less than capacity Station and bus is not at station
     if ((unsigned int)(*capStation) < param.C && (*busThere)!=1) {
 
         sem_wait(S_counter);
@@ -277,8 +288,8 @@ void createRider(Params param) {
                 *capStation);
         sem_post(S_writer);
     } else {
-        while (!isTransp) {
-            sem_wait(S_depart);
+        while (!isTransp) {     //While count of riders at the station is not less than capacity.
+            sem_wait(S_depart); //rider wait for depart bus
             if ((unsigned int)*capStation < param.C) {
                 isTransp = true;
                 incLineID();
@@ -294,7 +305,7 @@ void createRider(Params param) {
             }
         }
     }
-    sem_wait(S_arrBus);
+    sem_wait(S_arrBus); //Wait for arriving bus
     incLineID();
 
     sem_wait(S_writer);
@@ -308,11 +319,11 @@ void createRider(Params param) {
     (*boarded)++;
     sem_post(S_counter);
 
-    if(*capStation==0){
+    if(*capStation==0){     //Bus can depart
         sem_post(S_fullBus);
     }
 
-    sem_wait(S_endRid);
+    sem_wait(S_endRid);     //Rider is finished
     incLineID();
     sem_wait(S_writer);
     fprintf(file,"%d\t: RID %d\t: finish\n",
@@ -322,6 +333,7 @@ void createRider(Params param) {
 
 }
 
+//------------------------Create-Bus------------------//
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
 
@@ -334,7 +346,7 @@ void createBus(Params param){
     fprintf(file,"%d\t: BUS \t: start \n",*lineID);
     sem_post(S_writer);
 
-    while((*stillRid) != 0){
+    while((*stillRid) != 0){        //While any riders is at station
         long delay= (random() % (param.ABT + 1));
         sem_wait(S_counter);
         (*busThere)=1;
@@ -345,7 +357,7 @@ void createBus(Params param){
         fprintf(file,"%d\t: BUS \t: arrival \n",*lineID);
         sem_post(S_writer);
 
-        if((*capStation)>0) {
+        if((*capStation)>0) {   //If station is not empty
             incLineID();
             sem_wait(S_writer);
             fprintf(file, "%d\t: BUS \t: start boarding: %d\n",
@@ -384,16 +396,20 @@ void createBus(Params param){
     sem_post(S_writer);
 
 }
+
+//------------------------Kill-all-process------------------//
 void killAll(){
     freeSources();
     kill(getpid(),SIGTERM);
 }
 
+//------------------------Print-Error------------------//
 void error(char* text){
     fprintf(stderr,"%s\n",text);
     exit(1);
 }
 
+//------------------------Initialize-Arguments------------------//
 void initArgs(int argc,char** args,int count){
     if(argc == count) {
         for(int i=1;i<count;i++){
