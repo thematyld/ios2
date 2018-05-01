@@ -1,3 +1,3 @@
-/home/mabartos/Documents/Private/VUT/IOS/Proj2/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-/home/mabartos/Documents/Private/VUT/IOS/Proj2/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/mabartos/Documents/Private/VUT/IOS/Proj2/cmake-build-debug/CMakeFiles/Proj2.dir
+/home/mabartos/Documents/Private/VUT/IOS/Proj2/ios2/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/mabartos/Documents/Private/VUT/IOS/Proj2/ios2/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/mabartos/Documents/Private/VUT/IOS/Proj2/ios2/cmake-build-debug/CMakeFiles/Proj2.dir
