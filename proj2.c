@@ -81,7 +81,6 @@ void incLineID();
 int isNumber(char* string);
 
 void initSem(){
-
     S_depart=sem_open(DEPART_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_arrBus=sem_open(ARR_BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_writer=sem_open(WRITER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
@@ -89,18 +88,6 @@ void initSem(){
     S_endRid=sem_open(END_RID_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_counter=sem_open(COUNTER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_completed=sem_open(COMPLETED_NAME,O_CREAT|O_EXCL,0666,LOCKED);
-
-    if(S_depart     == SEM_FAILED ||
-       S_arrBus     == SEM_FAILED ||
-       S_writer     == SEM_FAILED ||
-       S_fullBus    == SEM_FAILED ||
-       S_endRid     == SEM_FAILED ||
-       S_counter    == SEM_FAILED ||
-       S_completed  == SEM_FAILED
-            ){
-        killAll();
-        error("Error - Initialize semaphores.");
-    }
 
 }
 
@@ -158,6 +145,8 @@ int main(int argc,char** args) {
     }
     setbuf(file,NULL);
 
+    signal(SIGTERM, killAll);
+    signal(SIGINT, killAll);
     //-----------Initializations---------
     initArgs(argc,args,COUNT_PARAM);
     initSem();
@@ -212,6 +201,7 @@ int main(int argc,char** args) {
 }
 
 void freeSources(){
+    fclose(file);
     if(sem_destroy(S_depart)    == -1  ||
        sem_destroy(S_arrBus)    == -1  ||
        sem_destroy(S_completed) == -1  ||
@@ -254,7 +244,7 @@ void incLineID(){
 int isNumber(char* string){
     char* tmp=string;
     size_t len=strlen(tmp);
-    for(int i=0;i<len;i++){
+    for(unsigned int i=0;i<len;i++){
         if(!isdigit(tmp[i]))
             return(-1);
     }
@@ -372,8 +362,8 @@ void createBus(Params param){
             sem_wait(S_fullBus);
 
             sem_wait(S_counter);
-                (*stillRid)-=(*boarded);
-                (*boarded)=0;
+            (*stillRid)-=(*boarded);
+            (*boarded)=0;
             sem_post(S_counter);
             sem_post(S_endRid);
         }
@@ -396,7 +386,6 @@ void createBus(Params param){
 }
 void killAll(){
     freeSources();
-    kill(mainPid,SIGTERM);
     kill(getpid(),SIGTERM);
 }
 
