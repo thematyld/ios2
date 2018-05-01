@@ -80,7 +80,7 @@ void killAll();
 void incLineID();
 int isNumber(char* string);
 
-void initSem(){         //TODO
+void initSem(){
 
     S_depart=sem_open(DEPART_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_arrBus=sem_open(ARR_BUS_NAME,O_CREAT|O_EXCL,0666,LOCKED);
@@ -89,6 +89,18 @@ void initSem(){         //TODO
     S_endRid=sem_open(END_RID_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_counter=sem_open(COUNTER_NAME,O_CREAT|O_EXCL,0666,LOCKED);
     S_completed=sem_open(COMPLETED_NAME,O_CREAT|O_EXCL,0666,LOCKED);
+
+    if(S_depart     == SEM_FAILED ||
+       S_arrBus     == SEM_FAILED ||
+       S_writer     == SEM_FAILED ||
+       S_fullBus    == SEM_FAILED ||
+       S_endRid     == SEM_FAILED ||
+       S_counter    == SEM_FAILED ||
+       S_completed  == SEM_FAILED
+            ){
+        killAll();
+        error("Error - Initialize semaphores.");
+    }
 
 }
 
@@ -101,6 +113,17 @@ void initSHM(){
     lineIDid=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     counterRidID=shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
 
+    if(busThereID   ==-1   ||
+       capStationID ==-1   ||
+       ridIDid      ==-1   ||
+       boardedID    ==-1   ||
+       stillRidID   ==-1   ||
+       lineIDid     ==-1   ||
+       counterRidID ==-1
+            ){
+        error("Error - Initialize shared memory - shmget");
+    }
+
     busThere=shmat(busThereID, NULL, 0);
     capStation=shmat(capStationID, NULL, 0);
     ridID=shmat(ridIDid, NULL, 0);
@@ -109,6 +132,16 @@ void initSHM(){
     lineID=shmat(lineIDid, NULL, 0);
     counterRid=shmat(counterRidID, NULL, 0);
 
+    if(busThere   == NULL ||
+       capStation == NULL ||
+       ridID      == NULL ||
+       boarded    == NULL ||
+       stillRid   == NULL ||
+       lineID     == NULL ||
+       counterRid == NULL
+            ){
+        error("Error - Initialize shared memory - shmat");
+    }
     *busThere=0;
     *capStation=0;
     *ridID=1;
@@ -129,7 +162,6 @@ int main(int argc,char** args) {
     initArgs(argc,args,COUNT_PARAM);
     initSem();
     initSHM();
-
 
     pid_t* SRiders= malloc(Tparam.R* sizeof(pid_t));
 
@@ -166,7 +198,7 @@ int main(int argc,char** args) {
             exit(0);            //TODO
         }else if(busPid>0){
             waitpid(busPid,NULL,0);
-        } else{
+        }else{
             killAll();
             error("Error - Create bus!!");
         }
@@ -212,7 +244,6 @@ void freeSources(){
     sem_unlink(END_RID_NAME);
     sem_unlink(COUNTER_NAME);
     sem_unlink(COMPLETED_NAME);
-
 }
 void incLineID(){
     sem_wait(S_counter);
@@ -304,7 +335,6 @@ void createRider(Params param) {
 void createBus(Params param){
     srandom((unsigned int) time(NULL));
 
-
     sem_wait(S_counter);
     (*busThere)=1;
     sem_post(S_counter);
@@ -341,14 +371,11 @@ void createBus(Params param){
 
             sem_wait(S_fullBus);
 
-
             sem_wait(S_counter);
-            (*stillRid)-=(*boarded);
-            (*boarded)=0;
+                (*stillRid)-=(*boarded);
+                (*boarded)=0;
             sem_post(S_counter);
-
             sem_post(S_endRid);
-
         }
         incLineID();
         sem_wait(S_writer);
@@ -359,10 +386,7 @@ void createBus(Params param){
         sem_wait(S_counter);
         (*busThere = 0);
         sem_post(S_counter);
-
-
         usleep((__useconds_t) (delay * 1000));
-
     }
     sem_wait(S_writer);
     incLineID();
@@ -389,6 +413,7 @@ void initArgs(int argc,char** args,int count){
             int tmp=(int)strtol(args[i],NULL,10);
             if(tmp<0)
                 error("Wrong arguments!!");
+
             switch(i){
                 case 1:
                     if(tmp>0)
